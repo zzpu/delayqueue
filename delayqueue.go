@@ -10,7 +10,7 @@ type DelayMessage struct {
 	//当前下标
 	curIndex int;
 	//环形槽
-	slots [3600]map[string]*Task;
+	slots [3600]ConcurrentMap;
 	//关闭
 	closed chan bool;
 	//任务关闭
@@ -43,7 +43,7 @@ func NewDelayMessage() *DelayMessage {
 		startTime: time.Now(),
 	};
 	for i := 0; i < 3600; i++ {
-		dm.slots[i] = make(map[string]*Task);
+		dm.slots[i] = NewConcurrentMap()
 	}
 	return dm;
 }
@@ -85,13 +85,14 @@ func (dm *DelayMessage) taskLoop() {
 				if len(tasks) > 0 {
 					//遍历任务，判断任务循环次数等于0，则运行任务
 					//否则任务循环次数减1
-					for k, v := range tasks {
-						if v.cycleNum == 0 {
-							go v.exec(v.params...);
+					for _,key:= range tasks.Keys() {
+						item,_ := tasks.Get(key)
+						if item.cycleNum == 0 {
+							go item.exec(item.params...);
 							//删除运行过的任务
-							delete(tasks, k);
+							tasks.Remove(key);
 						} else {
-							v.cycleNum--;
+							item.cycleNum--;
 						}
 					}
 				}
@@ -139,14 +140,12 @@ func (dm *DelayMessage) AddTask(t time.Time, key string, exec TaskFunc, params [
 	ix := subSecond % 3600;
 	//把任务加入tasks中
 	tasks := dm.slots[ix];
-	if _, ok := tasks[key]; ok {
-		return errors.New("该slots中已存在key为" + key + "的任务");
-	}
-	tasks[key] = &Task{
+
+	tasks.Set(key,&Task{
 		cycleNum: cycleNum,
 		exec:     exec,
 		params:   params,
-	};
+	})
 	return nil;
 }
 
